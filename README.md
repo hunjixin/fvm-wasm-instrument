@@ -1,6 +1,8 @@
-# wasm-instrument
+# fvm-wasm-instrument
 
-A Rust library containing a collection of wasm module instrumentations and transformations
+This is a fork of [wasm-instrumet](https://github.com/paritytech/wasm-instrument) with a couple of FVM-specific changes.
+
+wasm-instrument is a Rust library containing a collection of wasm module instrumentations and transformations
 mainly useful for wasm based block chains and smart contracts.
 
 ## Provided functionality
@@ -21,7 +23,7 @@ To address this issue we can inject some code that meters the stack height at ru
 
 ## License
 
-`wasm-instrument` is distributed under the terms of both the MIT license and the
+`fvm-wasm-instrument` is distributed under the terms of both the MIT license and the
 Apache License (Version 2.0), at your choice.
 
 See LICENSE-APACHE, and LICENSE-MIT for details.
@@ -29,5 +31,5 @@ See LICENSE-APACHE, and LICENSE-MIT for details.
 ### Contribution
 
 Unless you explicitly state otherwise, any contribution intentionally submitted
-for inclusion in `wasm-instrument` by you, as defined in the Apache-2.0 license, shall be
+for inclusion in `fvm-wasm-instrument` by you, as defined in the Apache-2.0 license, shall be
 dual licensed as above, without any additional terms or conditions.
