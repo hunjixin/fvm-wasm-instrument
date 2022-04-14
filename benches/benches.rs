@@ -6,7 +6,7 @@ use std::{
 	fs::{read, read_dir},
 	path::PathBuf,
 };
-use wasm_instrument::{
+use fvm_wasm_instrument::{
 	gas_metering, inject_stack_limiter,
 	parity_wasm::{deserialize_buffer, elements::Module},
 };
