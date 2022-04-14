@@ -1,18 +1,19 @@
 [package]
 name = "fvm-wasm-instrument"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
 rust-version = "1.56.1"
 authors = ["Parity Technologies <admin@parity.io>", "Protocol Labs", "Filecoin Core Devs"]
 license = "MIT OR Apache-2.0"
 description = "Instrument and transform wasm modules."
-keywords = ["wasm", "webassembly", "blockchain", "gas-metering", "parity", "fvm", "filecoin"]
+keywords = ["wasm", "blockchain", "gas-metering", "fvm", "filecoin"]
 categories = ["wasm", "no-std"]
 repository = "https://github.com/filecoin-project/fvm-wasm-instrument"
 include = ["src/**/*", "LICENSE-*", "README.md"]
 
 [[bench]]
 name = "benches"
+path = "benches/benches.rs"
 harness = false
 
 [profile.bench]
