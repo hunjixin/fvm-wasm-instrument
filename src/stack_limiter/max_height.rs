@@ -405,7 +405,6 @@ pub fn compute(func_idx: u32, module: &elements::Module) -> Result<u32, &'static
 				stack.pop_values(1)?;
 				stack.push_values(1)?;
 			},
-
 			#[cfg(feature = "bulk")]
 			Bulk(BulkInstruction::MemoryInit(_)) |
 			Bulk(BulkInstruction::MemoryCopy) |
