@@ -159,20 +159,20 @@ pub fn inject<R: Rules>(
 	// back to plain module
 	let mut module = mbuilder.build();
 
-	// calculate actual function index of the imported definition
-	//    (subtract all imports that are NOT functions)
+	// calculate actual global index of the imported definition
+	//    (subtract all imports that are NOT globals)
 
 	let gas_global = module.import_count(elements::ImportCountType::Global) as u32 - 1;
 
 	let total_func = module.functions_space() as u32;
+
+	// We'll push the gas counter fuction after all other functions
 	let gas_func = total_func;
+
+	// grow_cnt_func is optional, so we put it after the gas function which always exists
 	let grow_cnt_func = total_func + 1;
 
-	// println!("GLOBAL:{} GF:{} GC:{}", gas_global, gas_func, grow_cnt_func);
-
-	// TODO
-
-	// TODO ADJUST GLOBAL INDEXES
+	// TODO FIGURE OUT IF ANYTHING NEEDS TO BE DONE ABOUT TABLES
 
 	let mut need_grow_counter = false;
 	let mut error = false;
@@ -183,16 +183,14 @@ pub fn inject<R: Rules>(
 			elements::Section::Code(code_section) =>
 				for func_body in code_section.bodies_mut() {
 					for instruction in func_body.code_mut().elements_mut().iter_mut() {
-						// todo match
-						if let Instruction::GetGlobal(global_index) = instruction {
-							if *global_index >= gas_global {
-								*global_index += 1
+						match instruction {
+							Instruction::GetGlobal(global_index) |
+							Instruction::SetGlobal(global_index) => {
+								if *global_index >= gas_global {
+									*global_index += 1
+								}
 							}
-						}
-						if let Instruction::SetGlobal(global_index) = instruction {
-							if *global_index >= gas_global {
-								*global_index += 1
-							}
+							_ => {}
 						}
 					}
 
@@ -206,8 +204,13 @@ pub fn inject<R: Rules>(
 						need_grow_counter = true;
 					}
 				},
+
+			/*
+			TODO: I don't think we need to do this, we should be able to just
+			      disallow global imports/exports.
+			      I'm also not sure if it's possible to adjust imports like this
+
 			elements::Section::Export(export_section) => {
-				// todo no need
 				for export in export_section.entries_mut() {
 					if let elements::Internal::Global(global_index) = export.internal_mut() {
 						if *global_index >= gas_global {
@@ -216,9 +219,12 @@ pub fn inject<R: Rules>(
 					}
 				}
 			},
-			// todo imports too?
+			*/
+
 			elements::Section::Element(elements_section) => {
-				// todo no need
+				// todo we probably don't need this as the gas/grow funcs are always last
+				// todo confirm that this can't reference globals
+
 				// Note that we do not need to check the element type referenced because in the
 				// WebAssembly 1.0 spec, the only allowed element type is funcref.
 				for segment in elements_section.entries_mut() {
@@ -227,14 +233,14 @@ pub fn inject<R: Rules>(
 						if *func_index >= gas_func {
 							*func_index += 1
 						}
+						// todo also do this for the grow func if we actually need this
+
+						// TODO WHAT ABOUT segment.offset()? IS THIS CODE WHICH CAN RUN? can it loop?
+						//  (if yes, some other sections seem to also have this)
+						//  ((we could check wasm code on install and forbid anything too complex/non-quickly-halting here))
 					}
 				}
 			},
-			elements::Section::Start(start_idx) =>
-			// todo no need
-				if *start_idx >= gas_func {
-					*start_idx += 1
-				},
 			_ => {},
 		}
 	}
@@ -657,7 +663,6 @@ fn insert_metering_calls(
 mod tests {
 	use super::*;
 	use parity_wasm::{builder, elements, elements::Instruction::*, serialize};
-	use wasmprinter::print_bytes;
 
 	fn get_function_body(
 		module: &elements::Module,
@@ -726,10 +731,6 @@ mod tests {
 		assert_eq!(injected_module.functions_space(), 2);
 
 		let binary = serialize(injected_module).expect("serialization failed");
-
-		let bs = print_bytes(&binary).unwrap();
-		println!("{}", bs);
-
 		wasmparser::validate(&binary).unwrap();
 	}
 
