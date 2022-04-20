@@ -108,10 +108,10 @@ impl Rules for ConstantCostRules {
 /// Transforms a given module into one that charges gas for code to be executed by proxy of an
 /// imported gas metering function.
 ///
-/// The output module imports a function "gas" from the specified module with type signature
-/// [i32] -> []. The argument is the amount of gas required to continue execution. The external
-/// function is meant to keep track of the total amount of gas used and trap or otherwise halt
-/// execution of the runtime if the gas usage exceeds some allowed limit.
+/// The output module imports a mutable global i64 "gas" from the specified module. The value
+/// specifies the amount of available units of gas(*todo). A new function doing gas accounting
+/// using this global is added to the module. Having the accounting logic in WASM lets us avoid
+/// the overhead of external calls.
 ///
 /// The body of each function is divided into metered blocks, and the calls to charge gas are
 /// inserted at the beginning of every such block of code. A metered block is defined so that,
