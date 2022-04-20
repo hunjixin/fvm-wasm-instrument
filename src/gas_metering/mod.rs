@@ -11,7 +11,11 @@ use alloc::{vec, vec::Vec};
 use core::{cmp::min, mem, num::NonZeroU32};
 use parity_wasm::{
 	builder,
-	elements::{self, BlockType, Instruction, ValueType},
+	elements::{
+		self, BlockType, Instruction,
+		Instruction::{End, I32Const},
+		ValueType,
+	},
 };
 
 /// An interface that describes instruction costs.
@@ -172,8 +176,6 @@ pub fn inject<R: Rules>(
 	// grow_cnt_func is optional, so we put it after the gas function which always exists
 	let grow_cnt_func = total_func + 1;
 
-	// TODO FIGURE OUT IF ANYTHING NEEDS TO BE DONE ABOUT TABLES
-
 	let mut need_grow_counter = false;
 	let mut error = false;
 
@@ -184,13 +186,15 @@ pub fn inject<R: Rules>(
 				for func_body in code_section.bodies_mut() {
 					for instruction in func_body.code_mut().elements_mut().iter_mut() {
 						match instruction {
-							Instruction::GetGlobal(global_index) |
-							Instruction::SetGlobal(global_index) => {
+							Instruction::GetGlobal(global_index) =>
 								if *global_index >= gas_global {
 									*global_index += 1
-								}
-							}
-							_ => {}
+								},
+							Instruction::SetGlobal(global_index) =>
+								if *global_index >= gas_global {
+									*global_index += 1
+								},
+							_ => {},
 						}
 					}
 
@@ -205,42 +209,51 @@ pub fn inject<R: Rules>(
 					}
 				},
 
-			/*
-			TODO: I don't think we need to do this, we should be able to just
-			      disallow global imports/exports.
-			      I'm also not sure if it's possible to adjust imports like this
-
+			// adjust global exports
 			elements::Section::Export(export_section) => {
 				for export in export_section.entries_mut() {
 					if let elements::Internal::Global(global_index) = export.internal_mut() {
 						if *global_index >= gas_global {
-							*global_index += 1
+							*global_index += 1;
 						}
 					}
 				}
 			},
-			*/
+			// disallow global imports
+			elements::Section::Import(export_section) => {
+				for export in export_section.entries() {
+					if let elements::External::Global(_) = export.external() {
+						// only allow the gas import
+						if export.module() != gas_module_name && export.field() != "gas" {
+							error = true;
+							break
+						}
+					}
+				}
+			},
 
 			elements::Section::Element(elements_section) => {
-				// todo we probably don't need this as the gas/grow funcs are always last
-				// todo confirm that this can't reference globals
-
 				// Note that we do not need to check the element type referenced because in the
 				// WebAssembly 1.0 spec, the only allowed element type is funcref.
 				for segment in elements_section.entries_mut() {
-					// update all indirect call addresses initial values
-					for func_index in segment.members_mut() {
-						if *func_index >= gas_func {
-							*func_index += 1
+					if let Some(inst) = segment.offset() {
+						if !check_offset_code(inst.code()) {
+							error = true;
+							break
 						}
-						// todo also do this for the grow func if we actually need this
-
-						// TODO WHAT ABOUT segment.offset()? IS THIS CODE WHICH CAN RUN? can it loop?
-						//  (if yes, some other sections seem to also have this)
-						//  ((we could check wasm code on install and forbid anything too complex/non-quickly-halting here))
 					}
 				}
 			},
+			elements::Section::Data(data_section) =>
+				for segment in data_section.entries_mut() {
+					if let Some(inst) = segment.offset() {
+						if !check_offset_code(inst.code()) {
+							error = true;
+							break
+						}
+					}
+				},
+
 			_ => {},
 		}
 	}
@@ -256,6 +269,18 @@ pub fn inject<R: Rules>(
 	} else {
 		Ok(module)
 	}
+}
+
+fn check_offset_code(code: &[Instruction]) -> bool {
+	if code.len() == 2 {
+		if let I32Const(_) = code[0] {
+			if End == code[1] {
+				return true
+			}
+		}
+	}
+
+	false
 }
 
 /// A control flow block is opened with the `block`, `loop`, and `if` instructions and is closed
@@ -515,10 +540,8 @@ fn add_gas_counter(module: elements::Module, gas_global: u32) -> elements::Modul
 				I32Sub,                // (newgas)
 				SetGlobal(gas_global), //
 				GetGlobal(gas_global), // (newgas)
-
 				I32Const(0),           // (newgas) (0)
 				I32LtS,                // (newgas ltz)
-
 				If(BlockType::NoResult),
 				Unreachable,
 				End,
