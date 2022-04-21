@@ -1,9 +1,9 @@
+use fvm_wasm_instrument::{self as instrument, parity_wasm::elements};
 use std::{
 	fs,
 	io::{self, Read, Write},
 	path::{Path, PathBuf},
 };
-use fvm_wasm_instrument::{self as instrument, parity_wasm::elements};
 use wasmparser::validate;
 
 fn slurp<P: AsRef<Path>>(path: P) -> io::Result<Vec<u8>> {
