@@ -105,13 +105,15 @@ impl Rules for ConstantCostRules {
 	}
 }
 
+pub const GAS_COUNTER_NAME: &str = "gas_couner";
+
 /// Transforms a given module into one that charges gas for code to be executed by proxy of an
 /// imported gas metering function.
 ///
-/// The output module imports a mutable global i64 "gas" from the specified module. The value
-/// specifies the amount of available units of gas(*todo). A new function doing gas accounting
-/// using this global is added to the module. Having the accounting logic in WASM lets us avoid
-/// the overhead of external calls.
+/// The output module imports a mutable global i64 $GAS_COUNTER_NAME ("gas_couner") from the
+/// specified module. The value specifies the amount of available units of gas. A new function
+/// doing gas accounting using this global is added to the module. Having the accounting logic
+/// in WASM lets us avoid the overhead of external calls.
 ///
 /// The body of each function is divided into metered blocks, and the calls to charge gas are
 /// inserted at the beginning of every such block of code. A metered block is defined so that,
@@ -138,7 +140,7 @@ impl Rules for ConstantCostRules {
 /// This routine runs in time linear in the size of the input module.
 ///
 /// The function fails if the module contains any operation forbidden by gas rule set, returning
-/// the original module as an Err.
+/// the original module as an Err. Importing Global values is currently forbidden.
 pub fn inject<R: Rules>(
 	module: elements::Module,
 	rules: &R,
@@ -150,7 +152,7 @@ pub fn inject<R: Rules>(
 	mbuilder.push_import(
 		builder::import()
 			.module(gas_module_name)
-			.field("gas")
+			.field(GAS_COUNTER_NAME)
 			.external()
 			.global(ValueType::I64, true)
 			.build(),
@@ -182,14 +184,10 @@ pub fn inject<R: Rules>(
 				for func_body in code_section.bodies_mut() {
 					for instruction in func_body.code_mut().elements_mut().iter_mut() {
 						match instruction {
-							Instruction::GetGlobal(global_index) =>
-								if *global_index >= gas_global {
-									*global_index += 1
-								},
-							Instruction::SetGlobal(global_index) =>
-								if *global_index >= gas_global {
-									*global_index += 1
-								},
+							Instruction::GetGlobal(global_index) |
+							Instruction::SetGlobal(global_index)
+								if *global_index >= gas_global =>
+								*global_index += 1,
 							_ => {},
 						}
 					}
@@ -215,22 +213,19 @@ pub fn inject<R: Rules>(
 					}
 				}
 			},
-			// disallow global imports
-			elements::Section::Import(export_section) => {
+
+			elements::Section::Import(export_section) =>
 				for export in export_section.entries() {
 					if let elements::External::Global(_) = export.external() {
-						// only allow the gas import
-						if export.module() != gas_module_name && export.field() != "gas" {
+						if export.module() != gas_module_name && export.field() != GAS_COUNTER_NAME
+						{
 							error = true;
 							break
 						}
 					}
-				}
-			},
+				},
 
 			elements::Section::Element(elements_section) => {
-				// Note that we do not need to check the element type referenced because in the
-				// WebAssembly 1.0 spec, the only allowed element type is funcref.
 				for segment in elements_section.entries_mut() {
 					if let Some(inst) = segment.offset() {
 						if !check_offset_code(inst.code()) {
@@ -268,15 +263,7 @@ pub fn inject<R: Rules>(
 }
 
 fn check_offset_code(code: &[Instruction]) -> bool {
-	if code.len() == 2 {
-		if let I32Const(_) = code[0] {
-			if End == code[1] {
-				return true
-			}
-		}
-	}
-
-	false
+	matches!(code, [I32Const(_), End])
 }
 
 /// A control flow block is opened with the `block`, `loop`, and `if` instructions and is closed
@@ -721,8 +708,16 @@ mod tests {
 		// 1 is gas counter
 		assert_eq!(
 			get_function_body(&injected_module, 2).unwrap(),
-			&vec![GetLocal(0), GetLocal(0), I64ExtendUI32, I64Const(10000), I64Mul, Call(1), GrowMemory(0), End,]
-				[..]
+			&vec![
+				GetLocal(0),
+				GetLocal(0),
+				I64ExtendUI32,
+				I64Const(10000),
+				I64Mul,
+				Call(1),
+				GrowMemory(0),
+				End,
+			][..]
 		);
 
 		let binary = serialize(injected_module).expect("serialization failed");
